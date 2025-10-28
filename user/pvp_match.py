@@ -5,12 +5,12 @@ from environment.agent import SB3Agent, CameraResolution, RecurrentPPOAgent, Bas
 from user.my_agent import SubmittedAgent
 
 experiment_dir_1 = "experiment_9/" #input('Model experiment directory name (e.g. experiment_1): ')
-model_name_1 = "rl_model_40390_steps" #input('Name of first model (e.g. rl_model_100_steps): ')
+model_name_1 = "rl_model_54000_steps" #input('Name of first model (e.g. rl_model_100_steps): ')
 
-my_agent = SubmittedAgent("checkpoints\experiment_9\rl_model_40390_steps")
-#opponent = SubmittedAgent(None)
+# my_agent = SubmittedAgent("checkpoints/experiment_9/rl_model_54000_steps")
+# opponent = SubmittedAgent("checkpoints/experiment_9/rl_model_54000_steps")
 opponent = ConstantAgent()
-# my_agent = UserInputAgent()
+my_agent = UserInputAgent()
 # opponent = ConstantAgent()
 
 num_matches = 2 #int(input('Number of matches: '))
@@ -18,9 +18,9 @@ num_matches = 2 #int(input('Number of matches: '))
 match_time = 50000000000
 # 270
 # Run a single real-time match
-run_real_time_match(
+print(run_real_time_match(
     agent_1=my_agent,
     agent_2=opponent,
     max_timesteps=30 * 999990000,  # Match time in frames (adjust as needed)
     resolution=CameraResolution.LOW,
-)
+))
