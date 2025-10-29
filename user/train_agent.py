@@ -430,7 +430,7 @@ def danger_zone_reward(
 
     # Apply penalty if the player is in the danger zone
     reward = -zone_penalty if player.body.position.y >= zone_height else 0.0
-
+    print("Player Y:", player.body.position.y, "Zone height: ", zone_height, "Reward:", reward)
     return reward * env.dt
 
 def in_state_reward(
@@ -490,7 +490,7 @@ def head_to_opponent(
     # Apply penalty if the player is in the danger zone
     multiplier = -1 if player.body.position.x > opponent.body.position.x else 1
     reward = multiplier * (player.body.position.x - player.prev_x)
-
+    print("Player X:", player.body.position.x, "Opponent X:", opponent.body.position.x, "Reward:", reward)
     return reward
 
 def holding_more_than_3_keys(
@@ -575,7 +575,7 @@ if __name__ == '__main__':
     # my_agent = RecurrentPPOAgent()
 
     # Start here if you want to train from a specific timestep. e.g:
-    my_agent = RecurrentPPOAgent(file_path='checkpoints/experiment_10/rl_model_108000_steps.zip')
+    my_agent = RecurrentPPOAgent(file_path='checkpoints/experiment_11/rl_model_1000_steps.zip')
 
     # Reward manager
     reward_manager = gen_reward_manager()
@@ -591,7 +591,7 @@ if __name__ == '__main__':
         save_freq=100_000, # Save frequency
         max_saved=40, # Maximum number of saved models
         save_path='checkpoints', # Save path
-        run_name='experiment_10',
+        run_name='experiment_11',
         mode=SaveHandlerMode.RESUME # Save mode, FORCE or RESUME
     )
 
@@ -608,6 +608,6 @@ if __name__ == '__main__':
         save_handler,
         opponent_cfg,
         CameraResolution.LOW,
-        train_timesteps=1_000_000_000,
+        train_timesteps=50,
         train_logging=TrainLogging.PLOT
     )
