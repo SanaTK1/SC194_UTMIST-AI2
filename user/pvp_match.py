@@ -9,7 +9,7 @@ model_name_1 = "rl_model_54000_steps" #input('Name of first model (e.g. rl_model
 
 # my_agent = SubmittedAgent("checkpoints/experiment_9/rl_model_54000_steps")
 # opponent = SubmittedAgent("checkpoints/experiment_9/rl_model_54000_steps")
-opponent = ConstantAgent()
+opponent = BasedAgent()
 my_agent = UserInputAgent()
 # opponent = ConstantAgent()
 
