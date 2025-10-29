@@ -7,10 +7,11 @@ from user.my_agent import SubmittedAgent
 experiment_dir_1 = "experiment_9/" #input('Model experiment directory name (e.g. experiment_1): ')
 model_name_1 = "rl_model_54000_steps" #input('Name of first model (e.g. rl_model_100_steps): ')
 
-# my_agent = SubmittedAgent("checkpoints/experiment_9/rl_model_54000_steps")
+# my_agent = SubmittedAgent("checkpoints/experiment_11/rl_model_810000_steps")
 # opponent = SubmittedAgent("checkpoints/experiment_9/rl_model_54000_steps")
+my_agent = BasedAgent()
 opponent = BasedAgent()
-my_agent = UserInputAgent()
+# my_agent = UserInputAgent()
 # opponent = ConstantAgent()
 
 num_matches = 2 #int(input('Number of matches: '))

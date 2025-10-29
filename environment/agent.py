@@ -933,7 +933,7 @@ class RecurrentPPOAgent(Agent):
             self.model = RecurrentPPO("MlpLstmPolicy",
                                       self.env,
                                       verbose=0,
-                                      n_steps=2(30*90*20),
+                                      n_steps=30*90*20,
                                       batch_size=16,
                                       ent_coef=0.05,
                                       policy_kwargs=policy_kwargs)

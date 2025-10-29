@@ -412,7 +412,7 @@ def damage_interaction_reward(
 def danger_zone_reward(
     env: WarehouseBrawl,
     zone_penalty: int = 1,
-    zone_height: float = 4.2
+    zone_height: float = 2.0
 ) -> float:
     """
     Applies a penalty for every time frame player surpases a certain height threshold in the environment.
@@ -430,7 +430,6 @@ def danger_zone_reward(
 
     # Apply penalty if the player is in the danger zone
     reward = -zone_penalty if player.body.position.y >= zone_height else 0.0
-    print("Player Y:", player.body.position.y, "Zone height: ", zone_height, "Reward:", reward)
     return reward * env.dt
 
 def in_state_reward(
@@ -488,9 +487,37 @@ def head_to_opponent(
     opponent: Player = env.objects["opponent"]
 
     # Apply penalty if the player is in the danger zone
-    multiplier = -1 if player.body.position.x > opponent.body.position.x else 1
-    reward = multiplier * (player.body.position.x - player.prev_x)
-    print("Player X:", player.body.position.x, "Opponent X:", opponent.body.position.x, "Reward:", reward)
+    multiplier_x = -1 if player.body.position.x > opponent.body.position.x else 1
+    multiplier_y = -1 if player.body.position.y > opponent.body.position.y else 1
+    reward = multiplier_x * (player.body.position.x - player.prev_x) + multiplier_y * (player.body.position.y - player.prev_y)
+    print('player pos:', player.body.position.x, player.body.position.y)
+    print('player prev:', player.prev_x, player.prev_y)
+    print('opponent pos:', opponent.body.position.x, opponent.body.position.y)
+    print('reward:', reward)
+    return reward
+
+def edge_guard_reward(
+    env: WarehouseBrawl,
+    success_value: float = 0, #TODO
+    fail_value: float = 0,    #TODO
+) -> float:
+
+    """
+    Computes the reward given for every time step your agent is edge guarding the opponent.
+    """
+    reward = 0.0
+    G1_leftedge_x = -7
+    G1_rightedge_x = -2
+    G2_leftedge_x = 2
+    G2_rightedge_x = 7
+    player: Player = env.objects["player"]
+    opponent: Player = env.objects["opponent"]
+    if (opponent.body.position.x < G1_leftedge_x and G1_leftedge_x < player.body.position.x <  G1_leftedge_x + 1) or \
+       (opponent.body.position.x > G2_rightedge_x and G2_rightedge_x - 1 < player.body.position.x < G2_rightedge_x) or \
+        (G1_rightedge_x < opponent.body.position.x < G2_leftedge_x and \
+        (G1_rightedge_x - 1 < player.body.position.x < G1_rightedge_x) or (G2_leftedge_x < player.body.position.x < G2_leftedge_x + 1)):
+        reward = 1.0
+
     return reward
 
 def holding_more_than_3_keys(
@@ -575,7 +602,7 @@ if __name__ == '__main__':
     # my_agent = RecurrentPPOAgent()
 
     # Start here if you want to train from a specific timestep. e.g:
-    my_agent = RecurrentPPOAgent(file_path='checkpoints/experiment_11/rl_model_1000_steps.zip')
+    my_agent = RecurrentPPOAgent(file_path='checkpoints/experiment_11/rl_model_756000_steps.zip')
 
     # Reward manager
     reward_manager = gen_reward_manager()
