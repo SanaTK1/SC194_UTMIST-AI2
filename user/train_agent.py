@@ -412,7 +412,8 @@ def damage_interaction_reward(
 def danger_zone_reward(
     env: WarehouseBrawl,
     zone_penalty: int = 1,
-    zone_height: float = 2.0
+    zone_height: float = 2.0,
+    x_limit: float = 7.0
 ) -> float:
     """
     Applies a penalty for every time frame player surpases a certain height threshold in the environment.
@@ -428,8 +429,14 @@ def danger_zone_reward(
     # Get player object from the environment
     player: Player = env.objects["player"]
 
+    in_danger_zone = (
+        player.body.position.y >= zone_height
+        or player.body.position.x <= -x_limit
+        or player.body.position.x >= x_limit
+    )
+
     # Apply penalty if the player is in the danger zone
-    reward = -zone_penalty if player.body.position.y >= zone_height else 0.0
+    reward = -zone_penalty if in_danger_zone else 0.0
     return reward * env.dt
 
 def in_state_reward(
