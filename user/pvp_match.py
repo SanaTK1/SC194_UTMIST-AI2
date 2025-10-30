@@ -1,25 +1,17 @@
-# import skvideo
-# import skvideo.io
-from environment.environment import RenderMode
-from environment.agent import SB3Agent, CameraResolution, RecurrentPPOAgent, UserInputAgent, ConstantAgent, run_match, run_real_time_match
+from environment.environment import RenderMode, CameraResolution
+from environment.agent import run_real_time_match
+from user.train_agent import UserInputAgent, BasedAgent, ConstantAgent, ClockworkAgent, SB3Agent, RecurrentPPOAgent #add anymore custom Agents (from train_agent.py) here as needed
 from user.my_agent import SubmittedAgent
-from user.train_agent import BasedAgent
+import pygame
+pygame.init()
 
-experiment_dir_1 = "experiment_9/" #input('Model experiment directory name (e.g. experiment_1): ')
-model_name_1 = "rl_model_54000_steps" #input('Name of first model (e.g. rl_model_100_steps): ')
+my_agent = UserInputAgent()
 
-my_agent = SubmittedAgent("checkpoints/experiment_11/rl_model_1026000_steps")
-# opponent = SubmittedAgent("checkpoints/experiment_9/rl_model_54000_steps")
+#Input your file path here in SubmittedAgent if you are loading a model:
+opponent = SubmittedAgent(file_path=None)
 
-my_agent = BasedAgent()
-opponent = UserInputAgent()
-# my_agent = UserInputAgent()
-# opponent = ConstantAgent()
+match_time = 99999
 
-num_matches = 2 #int(input('Number of matches: '))
-#opponent=BasedAgent()
-match_time = 50000000000
-# 270
 # Run a single real-time match
 print(run_real_time_match(
     agent_1=my_agent,
