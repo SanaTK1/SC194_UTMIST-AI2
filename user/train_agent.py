@@ -148,6 +148,49 @@ class BasedAgent(Agent):
         opp_KO = self.obs_helper.get_section(obs, 'opponent_state') in [5, 11]
         action = self.act_helper.zeros()
 
+        # If off the edge, come back
+        if pos[0] > 10.67/2:
+            action = self.act_helper.press_keys(['a'])
+        elif pos[0] < -10.67/2:
+            action = self.act_helper.press_keys(['d'])
+        elif not opp_KO:
+            # Head toward opponent
+            if (opp_pos[0] > pos[0]):
+                action = self.act_helper.press_keys(['d'])
+            else:
+                action = self.act_helper.press_keys(['a'])
+
+        # Note: Passing in partial action
+        # Jump if below map or opponent is above you
+        if (pos[1] > 1.6 or pos[1] > opp_pos[1]) and self.time % 2 == 0:
+            action = self.act_helper.press_keys(['space'], action)
+
+        # Attack if near
+        if (pos[0] - opp_pos[0])**2 + (pos[1] - opp_pos[1])**2 < 4.0:
+            action = self.act_helper.press_keys(['j'], action)
+        return action
+
+class BasedAgent1(Agent):
+    '''
+    BasedAgent:
+    - Defines a hard-coded Agent that predicts actions based on if-statements. Interesting behaviour can be achieved here.
+    - The if-statement algorithm can be developed within the `predict` method below.
+    '''
+    def __init__(
+            self,
+            *args,
+            **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        self.time = 0
+
+    def predict(self, obs):
+        self.time += 1
+        pos = self.obs_helper.get_section(obs, 'player_pos')
+        opp_pos = self.obs_helper.get_section(obs, 'opponent_pos')
+        opp_KO = self.obs_helper.get_section(obs, 'opponent_state') in [5, 11]
+        action = self.act_helper.zeros()
+
         print(pos)
 
         spawner1 = self.obs_helper.get_section(obs, 'player_spawner_1') #[x, y, z] x y is position
@@ -162,17 +205,13 @@ class BasedAgent(Agent):
         dist_from_spawner = abs(spawner[0] - pos[0])
         dist_from_opp_x = abs(opp_pos[0] - pos[0])
         dist_from_opp_y = pos[0] - opp_pos[0]
-        weapon = self.obs_helper.get_section(obs, 'player_weapon_type') #[x, y, z] x y is position
+        weapon = self.obs_helper.get_section(obs, 'player_weapon_type') #[0] no weapon, [1] spear, [2] hammer
         moving_platform = self.obs_helper.get_section(obs, 'player_moving_platform_pos') #[x, y]
 
-        safe_to_jump = True
-        if pos[1] > 1.5 and moving_platform[1] < 0.5:
-            safe_to_jump = False
-
         # If off the edge, come back
-        if pos[0] > 6:
+        if pos[0] > 5:
             action = self.act_helper.press_keys(['a'])
-        elif pos[0] < -6:
+        elif pos[0] < -5:
             action = self.act_helper.press_keys(['d'])
         # elif not opp_KO:
         #     # Head toward opponent
@@ -182,7 +221,7 @@ class BasedAgent(Agent):
         #         action = self.act_helper.press_keys(['a'])
         elif not opp_KO:
             if spawner[0] == 0 or weapon[0] != 0:
-                    if (opp_pos[0] > pos[0]) and safe_to_jump:
+                    if (opp_pos[0] > pos[0]):
                         action = self.act_helper.press_keys(['d'])
                     else:
                         action = self.act_helper.press_keys(['a'])
@@ -202,6 +241,10 @@ class BasedAgent(Agent):
         if weapon[0] == 0 and spawner[0] != 0 and abs(spawner[0] - pos[0]) < 0.5:
             action = self.act_helper.press_keys(['h'], action)  # Pick up weapon
 
+        # Attack if near
+        if (pos[0] - opp_pos[0])**2 + (pos[1] - opp_pos[1])**2 < 4.0:
+            action = self.act_helper.press_keys(['j'], action)
+
         # Note: Passing in partial action
         # Jump if below map or opponent is above you
         # if (pos[1] > 1.6 or pos[1] > opp_pos[1]) and self.time % 2 == 0:
@@ -210,9 +253,96 @@ class BasedAgent(Agent):
             (pos[1] > 1.6)) and self.time % 2 == 0:
             action = self.act_helper.press_keys(['space'], action)
 
-        # Attack if near
-        if (pos[0] - opp_pos[0])**2 + (pos[1] - opp_pos[1])**2 < 4.0:
-            action = self.act_helper.press_keys(['j'], action)
+        return action
+
+class BasedAgent2(Agent):
+    '''
+    BasedAgent:
+    - Defines a hard-coded Agent that predicts actions based on if-statements. Interesting behaviour can be achieved here.
+    - The if-statement algorithm can be developed within the `predict` method below.
+    '''
+    def __init__(
+            self,
+            *args,
+            **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        self.time = 0
+        self.start_pos = None
+        self.opp_start_pos = None
+        self.prev_action = [0,0,0,0,0,0,0,0,0,0,0]  # Initialize previous action
+
+    def predict(self, obs):
+        self.time += 1
+        pos = self.obs_helper.get_section(obs, 'player_pos')
+        opp_pos = self.obs_helper.get_section(obs, 'opponent_pos')
+        opp_KO = self.obs_helper.get_section(obs, 'opponent_state') in [5, 11]
+        action = self.act_helper.zeros()
+
+        #More vars
+        state = self.obs_helper.get_section(obs, 'player_state')
+        opp_state = self.obs_helper.get_section(obs, 'opponent_state')
+        dist_from_opp = abs((pos[0] - opp_pos[0])**2 + (pos[1] - opp_pos[1])**2)
+        in_safezone = (-6.5 < pos[0] < -2.5) or (2.5 < pos[0] < 6.5)
+        weapon = self.obs_helper.get_section(obs, 'player_weapon_type') #[0] no weapon, [1] spear, [2] hammer
+        spawner1 = self.obs_helper.get_section(obs, 'player_spawner_1') #[x, y, z] x y is position
+        spawner2 = self.obs_helper.get_section(obs, 'player_spawner_2') #[x, y, z] x y is position
+        if spawner1[0] != 0:
+            spawner = spawner1
+        elif spawner2[0] != 0:
+            spawner = spawner2
+        else:
+            spawner = [0, 0, 0]
+
+        print(state[0] == 6)
+
+        #Store starting pos
+        if self.start_pos is None:
+            self.start_pos = pos.copy() 
+            print(f"Starting position recorded: {self.start_pos}")
+        if self.opp_start_pos is None:
+            self.opp_start_pos = opp_pos.copy() 
+            print(f"Opponent starting position recorded: {self.opp_start_pos}")
+
+        if not opp_KO:
+            #If off the edge then come back
+            if pos[0] > self.opp_start_pos[0] + 1.3: #If not at opponent's starting pos
+                action = self.act_helper.press_keys(['a'])
+            elif pos[0] < self.opp_start_pos[0] - 1.3: #If not at opponent's starting pos
+                action = self.act_helper.press_keys(['d'])
+            elif dist_from_opp < 10: #TODO: check time to potentially behave better
+                # Head toward opponent
+                if (opp_pos[0] > pos[0]):
+                    action = self.act_helper.press_keys(['d'])
+                elif (opp_pos[0] < pos[0]):
+                    action = self.act_helper.press_keys(['a'])
+                # Attack
+                if dist_from_opp < 4:
+                    action = self.act_helper.press_keys(['j'], action)
+                    if self.time % 2 == 0:
+                        action = self.act_helper.press_keys(['l'], action)
+
+        elif opp_KO:
+            if weapon[0] != 2 and spawner[0] != 0:
+                if (spawner[0] > pos[0]):
+                    action = self.act_helper.press_keys(['d'])
+                elif (spawner[0] < pos[0]):
+                    action = self.act_helper.press_keys(['a'])
+        
+        # Pick up weapon if near
+        if weapon[0] != 2 and abs(spawner[0] - pos[0]) < 0.5:
+            action = self.act_helper.press_keys(['h'])
+        
+        #jump if near gap
+        if ((-2.5 < pos[0] < 3.5) or (pos[0] > self.opp_start_pos[0] + 1.5) or (pos[0] < self.opp_start_pos[0] - 1.5) ) \
+            and self.time % 2 == 0:
+            action = self.act_helper.press_keys(['space'], action)
+
+        #Speed fall if safe
+        if state[0] == 6 and in_safezone:
+            action = self.act_helper.press_keys(['s'], action)
+
+        self.prev_action = action
         return action
 
 class UserInputAgent(Agent):
