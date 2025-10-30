@@ -148,21 +148,66 @@ class BasedAgent(Agent):
         opp_KO = self.obs_helper.get_section(obs, 'opponent_state') in [5, 11]
         action = self.act_helper.zeros()
 
+        print(pos)
+
+        spawner1 = self.obs_helper.get_section(obs, 'player_spawner_1') #[x, y, z] x y is position
+        spawner2 = self.obs_helper.get_section(obs, 'player_spawner_2') #[x, y, z] x y is position
+        if spawner1[0] != 0:
+            spawner = spawner1
+        elif spawner2[0] != 0:
+            spawner = spawner2
+        else:
+            spawner = [0, 0, 0]
+
+        dist_from_spawner = abs(spawner[0] - pos[0])
+        dist_from_opp_x = abs(opp_pos[0] - pos[0])
+        dist_from_opp_y = pos[0] - opp_pos[0]
+        weapon = self.obs_helper.get_section(obs, 'player_weapon_type') #[x, y, z] x y is position
+        moving_platform = self.obs_helper.get_section(obs, 'player_moving_platform_pos') #[x, y]
+
+        safe_to_jump = True
+        if pos[1] > 1.5 and moving_platform[1] < 0.5:
+            safe_to_jump = False
+
         # If off the edge, come back
-        if pos[0] > 10.67/2:
+        if pos[0] > 6:
             action = self.act_helper.press_keys(['a'])
-        elif pos[0] < -10.67/2:
+        elif pos[0] < -6:
             action = self.act_helper.press_keys(['d'])
+        # elif not opp_KO:
+        #     # Head toward opponent
+        #     if (opp_pos[0] > pos[0]):
+        #         action = self.act_helper.press_keys(['d'])
+        #     else:
+        #         action = self.act_helper.press_keys(['a'])
         elif not opp_KO:
-            # Head toward opponent
-            if (opp_pos[0] > pos[0]):
-                action = self.act_helper.press_keys(['d'])
+            if spawner[0] == 0 or weapon[0] != 0:
+                    if (opp_pos[0] > pos[0]) and safe_to_jump:
+                        action = self.act_helper.press_keys(['d'])
+                    else:
+                        action = self.act_helper.press_keys(['a'])
             else:
-                action = self.act_helper.press_keys(['a'])
+                if weapon[0] == 0 and dist_from_spawner < dist_from_opp_x:
+                    if (spawner[0] > pos[0]):
+                        action = self.act_helper.press_keys(['d'])
+                    else:
+                        action = self.act_helper.press_keys(['a'])
+        else:
+            if weapon[0] == 0 and spawner[0] != 0:
+                if (spawner[0] > pos[0]):
+                    action = self.act_helper.press_keys(['d'])
+                else:
+                    action = self.act_helper.press_keys(['a'])
+
+        if weapon[0] == 0 and spawner[0] != 0 and abs(spawner[0] - pos[0]) < 0.5:
+            action = self.act_helper.press_keys(['h'], action)  # Pick up weapon
 
         # Note: Passing in partial action
         # Jump if below map or opponent is above you
-        if (pos[1] > 1.6 or pos[1] > opp_pos[1]) and self.time % 2 == 0:
+        # if (pos[1] > 1.6 or pos[1] > opp_pos[1]) and self.time % 2 == 0:
+        #     action = self.act_helper.press_keys(['space'], action)
+        if (((dist_from_opp_x < 3.5) and (-2 < dist_from_opp_y < 0)) or \
+            (pos[1] > 1.6)) and self.time % 2 == 0:
             action = self.act_helper.press_keys(['space'], action)
 
         # Attack if near
@@ -497,10 +542,6 @@ def head_to_opponent(
     multiplier_x = -1 if player.body.position.x > opponent.body.position.x else 1
     multiplier_y = -1 if player.body.position.y > opponent.body.position.y else 1
     reward = multiplier_x * (player.body.position.x - player.prev_x) + multiplier_y * (player.body.position.y - player.prev_y)
-    print('player pos:', player.body.position.x, player.body.position.y)
-    print('player prev:', player.prev_x, player.prev_y)
-    print('opponent pos:', opponent.body.position.x, opponent.body.position.y)
-    print('reward:', reward)
     return reward
 
 def edge_guard_reward(
@@ -595,6 +636,25 @@ def gen_reward_manager():
     }
     return RewardManager(reward_functions, signal_subscriptions)
 
+import os
+import re
+import time
+
+def get_latest_checkpoint(folder_path: str):
+    """
+    Returns the latest checkpoint file based on step number in filename.
+    """
+    files = os.listdir(folder_path)
+    step_files = []
+    for f in files:
+        match = re.search(r'rl_model_(\d+)_steps\.zip', f)
+        if match:
+            step_files.append((int(match.group(1)), f))
+    if not step_files:
+        return None
+    step_files.sort()
+    return os.path.join(folder_path, step_files[-1][1])
+
 # -------------------------------------------------------------------------
 # ----------------------------- MAIN FUNCTION -----------------------------
 # -------------------------------------------------------------------------
@@ -602,46 +662,59 @@ def gen_reward_manager():
 The main function runs training. You can change configurations such as the Agent type or opponent specifications here.
 '''
 if __name__ == '__main__':
-    # Create agent
-    # my_agent = CustomAgent(sb3_class=PPO, extractor=MLPExtractor)
+    checkpoints_dir = 'checkpoints/experiment_11'
 
-    # Start here if you want to train from scratch. e.g:
-    # my_agent = RecurrentPPOAgent()
+    for i in range(30):
+        latest_ckpt = get_latest_checkpoint(checkpoints_dir)
 
-    # Start here if you want to train from a specific timestep. e.g:
-    my_agent = RecurrentPPOAgent(file_path='checkpoints/experiment_11/rl_model_756000_steps.zip')
+        if latest_ckpt is None:
+            print("No checkpoint found! Start from scratch or provide an initial model.")
+            break
 
-    # Reward manager
-    reward_manager = gen_reward_manager()
-    # Self-play settings
-    selfplay_handler = SelfPlayRandom(
-        partial(type(my_agent)), # Agent class and its keyword arguments
-                                 # type(my_agent) = Agent class
-    )
+        print(f"Loading checkpoint: {latest_ckpt}")
+        # Create agent
+        # my_agent = CustomAgent(sb3_class=PPO, extractor=MLPExtractor)
 
-    # Set save settings here:
-    save_handler = SaveHandler(
-        agent=my_agent, # Agent to save
-        save_freq=100_000, # Save frequency
-        max_saved=40, # Maximum number of saved models
-        save_path='checkpoints', # Save path
-        run_name='experiment_11',
-        mode=SaveHandlerMode.RESUME # Save mode, FORCE or RESUME
-    )
+        # Start here if you want to train from scratch. e.g:
+        # my_agent = RecurrentPPOAgent()
 
-    # Set opponent settings here:
-    opponent_specification = {
-                    'self_play': (8, selfplay_handler),
-                    'constant_agent': (0.5, partial(ConstantAgent)),
-                    'based_agent': (1.5, partial(BasedAgent)),
-                }
-    opponent_cfg = OpponentsCfg(opponents=opponent_specification)
+        # Start here if you want to train from a specific timestep. e.g:
+        my_agent = RecurrentPPOAgent(file_path=latest_ckpt)
 
-    train(my_agent,
-        reward_manager,
-        save_handler,
-        opponent_cfg,
-        CameraResolution.LOW,
-        train_timesteps=50,
-        train_logging=TrainLogging.PLOT
-    )
+        # Reward manager
+        reward_manager = gen_reward_manager()
+        # Self-play settings
+        selfplay_handler = SelfPlayRandom(
+            partial(type(my_agent)), # Agent class and its keyword arguments
+                                    # type(my_agent) = Agent class
+        )
+
+        # Set save settings here:
+        save_handler = SaveHandler(
+            agent=my_agent, # Agent to save
+            save_freq=100_000, # Save frequency
+            max_saved=100, # Maximum number of saved models
+            save_path='checkpoints', # Save path
+            run_name='experiment_11',
+            mode=SaveHandlerMode.RESUME # Save mode, FORCE or RESUME
+        )
+
+        # Set opponent settings here:
+        opponent_specification = {
+                        'self_play': (8, selfplay_handler),
+                        'constant_agent': (0.5, partial(ConstantAgent)),
+                        'based_agent': (1.5, partial(BasedAgent)),
+                    }
+        opponent_cfg = OpponentsCfg(opponents=opponent_specification)
+
+        train(my_agent,
+            reward_manager,
+            save_handler,
+            opponent_cfg,
+            CameraResolution.LOW,
+            train_timesteps=50,
+            train_logging=TrainLogging.PLOT
+        )
+
+        print("Training round finished. Waiting before next round...")
+        time.sleep(5)
