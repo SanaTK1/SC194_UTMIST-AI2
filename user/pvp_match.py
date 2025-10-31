@@ -2,15 +2,16 @@ from environment.environment import RenderMode, CameraResolution
 from environment.agent import run_real_time_match
 from user.train_agent import UserInputAgent, ConstantAgent, ClockworkAgent, SB3Agent, RecurrentPPOAgent #add anymore custom Agents (from train_agent.py) here as needed
 from user.my_agent import SubmittedAgent
-from user.train_agent import BasedAgent, BasedAgent1, BasedAgent2
+from user.train_agent import BasedAgent, BasedAgent1, BasedAgent2, BasedAgent3
 
 import pygame
 pygame.init()
 
 my_agent = BasedAgent2()
+# my_agent = SubmittedAgent(file_path='checkpoints/experiment_12/rl_model_3262000_steps.zip')
 
 #Input your file path here in SubmittedAgent if you are loading a model:
-opponent = UserInputAgent()
+opponent = BasedAgent()
 
 match_time = 99999
 

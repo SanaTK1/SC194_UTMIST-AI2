@@ -93,7 +93,7 @@ class RecurrentPPOAgent(Agent):
         if self.file_path is None:
             policy_kwargs = {
                 'activation_fn': nn.ReLU,
-                'lstm_hidden_size': 512,
+                'lstm_hidden_size': 256,
                 'net_arch': [dict(pi=[32, 32], vf=[32, 32])],
                 'shared_lstm': True,
                 'enable_critic_lstm': False,
@@ -103,9 +103,10 @@ class RecurrentPPOAgent(Agent):
             self.model = RecurrentPPO("MlpLstmPolicy",
                                       self.env,
                                       verbose=0,
-                                      n_steps=30*90*20,
-                                      batch_size=16,
-                                      ent_coef=0.05,
+                                      n_steps=2000, #TODO: 30*90*20,
+                                      batch_size=64,
+                                      ent_coef=0.02,
+                                      learning_rate=0.001,
                                       policy_kwargs=policy_kwargs)
             del self.env
         else:
@@ -255,7 +256,7 @@ class BasedAgent1(Agent):
 
         return action
 
-class BasedAgent2(Agent):
+class BasedAgent2(Agent): # Best so far
     '''
     BasedAgent:
     - Defines a hard-coded Agent that predicts actions based on if-statements. Interesting behaviour can be achieved here.
@@ -283,9 +284,9 @@ class BasedAgent2(Agent):
         state = self.obs_helper.get_section(obs, 'player_state')
         opp_state = self.obs_helper.get_section(obs, 'opponent_state')
         dist_from_opp = abs((pos[0] - opp_pos[0])**2 + (pos[1] - opp_pos[1])**2)
-        in_safezone = (-6.5 < pos[0] < -2.5 and pos[1] > 2) or (2.5 < pos[0] < 6.5 and pos[1] > 0)
         opp_at_g1 = ( -7 < opp_pos[0] < -2 ) and (opp_pos[1] > 2)
         opp_at_g2 = ( 2 < opp_pos[0] < 7 ) and (opp_pos[1] > 0)
+        opp_off_left_edge = opp_pos[0] < -6
         weapon = self.obs_helper.get_section(obs, 'player_weapon_type') #[0] no weapon, [1] spear, [2] hammer
         spawner1 = self.obs_helper.get_section(obs, 'player_spawner_1') #[x, y, z] x y is position
         spawner2 = self.obs_helper.get_section(obs, 'player_spawner_2') #[x, y, z] x y is position
@@ -308,22 +309,21 @@ class BasedAgent2(Agent):
             self.opp_start_pos = opp_pos.copy() 
             print(f"Opponent starting position recorded: {self.opp_start_pos}")
         if self.target_pos is None:
-            self.target_pos = opp_pos.copy()
+            self.target_pos = pos.copy()
         
         #Determine target position
-        if opp_at_g1:
+        if opp_at_g1 and not opp_KO and self.time > 200:
             self.target_pos = self.start_pos if self.start_pos[0] == -5 else self.opp_start_pos
-        elif opp_at_g2:
+        elif opp_at_g2 and opp_KO and self.time > 200:
             self.target_pos = self.start_pos if self.start_pos[0] == 5 else self.opp_start_pos
-    
 
-        print(self.target_pos)
+        #print(pos[0] < self.target_pos[0] - 1.7)
 
         if not opp_KO:
             #If off the edge then come back
-            if pos[0] > self.target_pos[0] + 1.5: #If not at opponent's ground
+            if pos[0] > self.target_pos[0] + 1: #If not at opponent's ground
                 action = self.act_helper.press_keys(['a'])
-            elif pos[0] < self.target_pos[0] - 1.5: #If not at opponent's ground
+            elif pos[0] < self.target_pos[0] - 1: #If not at opponent's ground
                 action = self.act_helper.press_keys(['d'])
             elif dist_from_opp < 10:
                 # Head toward opponent
@@ -332,7 +332,7 @@ class BasedAgent2(Agent):
                 elif (opp_pos[0] < pos[0]):
                     action = self.act_helper.press_keys(['a'])
                 # Attack if near
-                if dist_from_opp < 6:
+                if abs(pos[0] - opp_pos[0]) < 3 and abs(pos[1] - opp_pos[1]) < 2:
                     for i in range(10):
                         action = self.act_helper.press_keys(['j'], action)
                 if dist_from_opp < 3:
@@ -344,6 +344,11 @@ class BasedAgent2(Agent):
                     action = self.act_helper.press_keys(['d'])
                 elif (spawner[0] < pos[0]):
                     action = self.act_helper.press_keys(['a'])
+            else:
+                if pos[0] > self.target_pos[0] + 1: #If not at opponent's ground
+                    action = self.act_helper.press_keys(['a'])
+                elif pos[0] < self.target_pos[0] - 1: #If not at opponent's ground
+                    action = self.act_helper.press_keys(['d'])
         
         # Pick up weapon if near
         if weapon[0] != 2 and abs(spawner[0] - pos[0]) < 2:
@@ -351,10 +356,124 @@ class BasedAgent2(Agent):
         
         #jump if near gap
         if ((-2.5 < pos[0] < 2.5) or \
-            (pos[0] > self.target_pos[0] + 1.5) or \
-            (pos[0] < self.target_pos[0] - 1.5) or \
-            (pos[1] > opp_pos[1] and dist_from_opp < 6)
-            ) and self.time % 4 == 0:
+            (pos[0] > self.target_pos[0] + 1.3) or \
+            (pos[0] < self.target_pos[0] - 1.3)
+            ) and self.time % 2 == 0:
+            action = self.act_helper.press_keys(['space'], action)
+
+        #Speed fall if safe
+        # if state[0] == 6 and in_safezone:
+        #     action = self.act_helper.press_keys(['s'], action)
+
+        return action
+    
+class BasedAgent3(Agent): # Best so far
+    '''
+    BasedAgent:
+    - Defines a hard-coded Agent that predicts actions based on if-statements. Interesting behaviour can be achieved here.
+    - The if-statement algorithm can be developed within the `predict` method below.
+    '''
+    def __init__(
+            self,
+            *args,
+            **kwargs
+    ):
+        super().__init__(*args, **kwargs)
+        self.time = 0
+        self.start_pos = None
+        self.opp_start_pos = None
+        self.target_pos = None
+
+    def predict(self, obs):
+        self.time += 1
+        pos = self.obs_helper.get_section(obs, 'player_pos')
+        opp_pos = self.obs_helper.get_section(obs, 'opponent_pos')
+        opp_KO = self.obs_helper.get_section(obs, 'opponent_state') in [5, 11]
+        action = self.act_helper.zeros()
+
+        #More vars
+        state = self.obs_helper.get_section(obs, 'player_state')
+        opp_state = self.obs_helper.get_section(obs, 'opponent_state')
+        dist_from_opp = abs((pos[0] - opp_pos[0])**2 + (pos[1] - opp_pos[1])**2)
+        opp_at_g1 = ( -7 < opp_pos[0] < -2 ) and (opp_pos[1] > 2)
+        opp_at_g2 = ( 2 < opp_pos[0] < 7 ) and (opp_pos[1] > 0)
+        is_safe = (-6.5 < pos[0] < -2.5 and -2 < pos[1] < 3) or (2.5 < pos[0] < 6.5 and -2 < pos[1] < 1)
+        weapon = self.obs_helper.get_section(obs, 'player_weapon_type') #[0] no weapon, [1] spear, [2] hammer
+        spawner1 = self.obs_helper.get_section(obs, 'player_spawner_1') #[x, y, z] x y is position
+        spawner2 = self.obs_helper.get_section(obs, 'player_spawner_2') #[x, y, z] x y is position
+        dist_from_spawner1 = abs(spawner1[0] - pos[0])
+        dist_from_spawner2 = abs(spawner2[0] - pos[0])
+        if spawner1[0] != 0 and spawner2[0] != 0:
+            spawner = spawner1 if dist_from_spawner1 < dist_from_spawner2 else spawner2
+        elif spawner1[0] != 0:
+            spawner = spawner1
+        elif spawner2[0] != 0:
+            spawner = spawner2
+        else:
+            spawner = [20, 0, 0]
+
+        #Store starting pos
+        if self.start_pos is None:
+            self.start_pos = pos.copy() 
+            print(f"Starting position recorded: {self.start_pos}")
+        if self.opp_start_pos is None:
+            self.opp_start_pos = opp_pos.copy() 
+            print(f"Opponent starting position recorded: {self.opp_start_pos}")
+        if self.target_pos is None:
+            self.target_pos = pos.copy()
+        
+        #Determine target position
+        if opp_at_g1 and not opp_KO and self.time > 200:
+            self.target_pos = self.start_pos if self.start_pos[0] == -5 else self.opp_start_pos
+        elif opp_at_g2 and opp_KO and self.time > 200:
+            self.target_pos = self.start_pos if self.start_pos[0] == 5 else self.opp_start_pos
+
+        print(is_safe)
+
+        if not opp_KO:
+            #If off the edge then come back
+            if pos[0] > self.target_pos[0] + 1: #If not at opponent's ground
+                action = self.act_helper.press_keys(['a'])
+            elif pos[0] < self.target_pos[0] - 1: #If not at opponent's ground
+                action = self.act_helper.press_keys(['d'])
+            elif dist_from_opp < 10:
+                # Head toward opponent
+                if (opp_pos[0] > pos[0]):
+                    action = self.act_helper.press_keys(['d'])
+                elif (opp_pos[0] < pos[0]):
+                    action = self.act_helper.press_keys(['a'])
+                # Attack if near
+                if abs(pos[0] - opp_pos[0]) < 4 and abs(pos[1] - opp_pos[1]) < 3:
+                    for i in range(10):
+                        action = self.act_helper.press_keys(['j'], action)
+                if dist_from_opp < 3 and abs(pos[1] - opp_pos[1]) < 1.5:
+                    action = self.act_helper.press_keys(['l'], action)
+
+        elif opp_KO:
+            if weapon[0] != 2 and spawner[0] != 20:
+                if (spawner[0] > pos[0]):
+                    action = self.act_helper.press_keys(['d'])
+                elif (spawner[0] < pos[0]):
+                    action = self.act_helper.press_keys(['a'])
+            else:
+                if pos[0] > self.target_pos[0] + 1: #If not at opponent's ground
+                    action = self.act_helper.press_keys(['a'])
+                elif pos[0] < self.target_pos[0] - 1: #If not at opponent's ground
+                    action = self.act_helper.press_keys(['d'])
+        
+        # Pick up weapon if near
+        if weapon[0] != 2 and abs(spawner[0] - pos[0]) < 2:
+            action = self.act_helper.press_keys(['h'], action)
+        
+        #jump if near gap
+        if ((-2.5 < pos[0] < 2.5) or \
+            (pos[0] > self.target_pos[0] + 1.8) or \
+            (pos[0] < self.target_pos[0] - 1.8)
+            ) and self.time % 2 == 0:
+            action = self.act_helper.press_keys(['space'], action)
+        elif ((pos[0] > self.target_pos[0] + 1.5) or \
+            (pos[0] < self.target_pos[0] - 1.5)
+            ) and self.time % 20 == 0:
             action = self.act_helper.press_keys(['space'], action)
 
         #Speed fall if safe
@@ -692,8 +811,6 @@ def head_to_opponent(
     multiplier_x = -1 if player.body.position.x > opponent.body.position.x else 1
     multiplier_y = -1 if player.body.position.y > opponent.body.position.y else 1
     reward = multiplier_x * (player.body.position.x - player.prev_x) + multiplier_y * (player.body.position.y - player.prev_y)
-    print("Key: ", player.cur_action)
-    print("State:", player.state)
     return reward
 
 def holding_more_than_3_keys(
@@ -720,7 +837,7 @@ def attack_when_opp_closeby(
         reward = 1.0
     elif is_attacking and dist_from_opp >= 4.0:
         reward = -1.0
-    return reward
+    return reward * env.dt
 
 def stun_opp(
     env: WarehouseBrawl,) -> float:
@@ -728,7 +845,7 @@ def stun_opp(
     opponent: Player = env.objects["opponent"]
     if isinstance(opponent.state, StunState):
         reward = 1.0
-    return reward
+    return reward * env.dt
 
 def on_win_reward(env: WarehouseBrawl, agent: str) -> float:
     if agent == 'player':
@@ -813,9 +930,9 @@ def get_latest_checkpoint(folder_path: str):
 The main function runs training. You can change configurations such as the Agent type or opponent specifications here.
 '''
 if __name__ == '__main__':
-    checkpoints_dir = 'checkpoints/experiment_11'
+    checkpoints_dir = 'checkpoints/experiment_12'
 
-    for i in range(1):
+    while True:
         latest_ckpt = get_latest_checkpoint(checkpoints_dir)
 
         if latest_ckpt is None:
@@ -830,7 +947,7 @@ if __name__ == '__main__':
         # my_agent = RecurrentPPOAgent()
 
         # Start here if you want to train from a specific timestep. e.g:
-        my_agent = RecurrentPPOAgent()
+        my_agent = RecurrentPPOAgent(file_path=latest_ckpt)
 
         # Reward manager
         reward_manager = gen_reward_manager()
@@ -843,11 +960,11 @@ if __name__ == '__main__':
         # Set save settings here:
         save_handler = SaveHandler(
             agent=my_agent, # Agent to save
-            save_freq=100_000, # Save frequency
+            save_freq=500_000, # Save frequency
             max_saved=100, # Maximum number of saved models
             save_path='checkpoints', # Save path
             run_name='experiment_12',
-            mode=SaveHandlerMode.FORCE # Save mode, FORCE or RESUME
+            mode=SaveHandlerMode.RESUME # Save mode, FORCE or RESUME
         )
 
         # Set opponent settings here:
@@ -863,7 +980,7 @@ if __name__ == '__main__':
             save_handler,
             opponent_cfg,
             CameraResolution.LOW,
-            train_timesteps=500000,
+            train_timesteps=10000000,
             train_logging=TrainLogging.PLOT
         )
 
