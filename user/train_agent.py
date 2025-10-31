@@ -270,7 +270,7 @@ class BasedAgent2(Agent):
         self.time = 0
         self.start_pos = None
         self.opp_start_pos = None
-        self.prev_action = [0,0,0,0,0,0,0,0,0,0,0]  # Initialize previous action
+        self.target_pos = None
 
     def predict(self, obs):
         self.time += 1
@@ -283,18 +283,22 @@ class BasedAgent2(Agent):
         state = self.obs_helper.get_section(obs, 'player_state')
         opp_state = self.obs_helper.get_section(obs, 'opponent_state')
         dist_from_opp = abs((pos[0] - opp_pos[0])**2 + (pos[1] - opp_pos[1])**2)
-        in_safezone = (-6.5 < pos[0] < -2.5) or (2.5 < pos[0] < 6.5)
+        in_safezone = (-6.5 < pos[0] < -2.5 and pos[1] > 2) or (2.5 < pos[0] < 6.5 and pos[1] > 0)
+        opp_at_g1 = ( -7 < opp_pos[0] < -2 ) and (opp_pos[1] > 2)
+        opp_at_g2 = ( 2 < opp_pos[0] < 7 ) and (opp_pos[1] > 0)
         weapon = self.obs_helper.get_section(obs, 'player_weapon_type') #[0] no weapon, [1] spear, [2] hammer
         spawner1 = self.obs_helper.get_section(obs, 'player_spawner_1') #[x, y, z] x y is position
         spawner2 = self.obs_helper.get_section(obs, 'player_spawner_2') #[x, y, z] x y is position
-        if spawner1[0] != 0:
+        dist_from_spawner1 = abs(spawner1[0] - pos[0])
+        dist_from_spawner2 = abs(spawner2[0] - pos[0])
+        if spawner1[0] != 0 and spawner2[0] != 0:
+            spawner = spawner1 if dist_from_spawner1 < dist_from_spawner2 else spawner2
+        elif spawner1[0] != 0:
             spawner = spawner1
         elif spawner2[0] != 0:
             spawner = spawner2
         else:
-            spawner = [0, 0, 0]
-
-        print(state[0] == 6)
+            spawner = [20, 0, 0]
 
         #Store starting pos
         if self.start_pos is None:
@@ -303,46 +307,60 @@ class BasedAgent2(Agent):
         if self.opp_start_pos is None:
             self.opp_start_pos = opp_pos.copy() 
             print(f"Opponent starting position recorded: {self.opp_start_pos}")
+        if self.target_pos is None:
+            self.target_pos = opp_pos.copy()
+        
+        #Determine target position
+        if opp_at_g1:
+            self.target_pos = self.start_pos if self.start_pos[0] == -5 else self.opp_start_pos
+        elif opp_at_g2:
+            self.target_pos = self.start_pos if self.start_pos[0] == 5 else self.opp_start_pos
+    
+
+        print(self.target_pos)
 
         if not opp_KO:
             #If off the edge then come back
-            if pos[0] > self.opp_start_pos[0] + 1.3: #If not at opponent's starting pos
+            if pos[0] > self.target_pos[0] + 1.5: #If not at opponent's ground
                 action = self.act_helper.press_keys(['a'])
-            elif pos[0] < self.opp_start_pos[0] - 1.3: #If not at opponent's starting pos
+            elif pos[0] < self.target_pos[0] - 1.5: #If not at opponent's ground
                 action = self.act_helper.press_keys(['d'])
-            elif dist_from_opp < 10: #TODO: check time to potentially behave better
+            elif dist_from_opp < 10:
                 # Head toward opponent
                 if (opp_pos[0] > pos[0]):
                     action = self.act_helper.press_keys(['d'])
                 elif (opp_pos[0] < pos[0]):
                     action = self.act_helper.press_keys(['a'])
-                # Attack
-                if dist_from_opp < 4:
-                    action = self.act_helper.press_keys(['j'], action)
-                    if self.time % 2 == 0:
-                        action = self.act_helper.press_keys(['l'], action)
+                # Attack if near
+                if dist_from_opp < 6:
+                    for i in range(10):
+                        action = self.act_helper.press_keys(['j'], action)
+                if dist_from_opp < 3:
+                    action = self.act_helper.press_keys(['l'], action)
 
         elif opp_KO:
-            if weapon[0] != 2 and spawner[0] != 0:
+            if weapon[0] != 2 and spawner[0] != 20:
                 if (spawner[0] > pos[0]):
                     action = self.act_helper.press_keys(['d'])
                 elif (spawner[0] < pos[0]):
                     action = self.act_helper.press_keys(['a'])
         
         # Pick up weapon if near
-        if weapon[0] != 2 and abs(spawner[0] - pos[0]) < 0.5:
-            action = self.act_helper.press_keys(['h'])
+        if weapon[0] != 2 and abs(spawner[0] - pos[0]) < 2:
+            action = self.act_helper.press_keys(['h'], action)
         
         #jump if near gap
-        if ((-2.5 < pos[0] < 3.5) or (pos[0] > self.opp_start_pos[0] + 1.5) or (pos[0] < self.opp_start_pos[0] - 1.5) ) \
-            and self.time % 2 == 0:
+        if ((-2.5 < pos[0] < 2.5) or \
+            (pos[0] > self.target_pos[0] + 1.5) or \
+            (pos[0] < self.target_pos[0] - 1.5) or \
+            (pos[1] > opp_pos[1] and dist_from_opp < 6)
+            ) and self.time % 4 == 0:
             action = self.act_helper.press_keys(['space'], action)
 
         #Speed fall if safe
-        if state[0] == 6 and in_safezone:
-            action = self.act_helper.press_keys(['s'], action)
+        # if state[0] == 6 and in_safezone:
+        #     action = self.act_helper.press_keys(['s'], action)
 
-        self.prev_action = action
         return action
 
 class UserInputAgent(Agent):
@@ -578,6 +596,9 @@ def damage_interaction_reward(
     else:
         raise ValueError(f"Invalid mode: {mode}")
 
+    # print("Damage dealt:", damage_dealt)
+    # print("Damage taken:", damage_taken)
+    # print("Reward:", reward)
     return reward / 140
 
 
@@ -587,7 +608,7 @@ def damage_interaction_reward(
 def danger_zone_reward(
     env: WarehouseBrawl,
     zone_penalty: int = 1,
-    zone_height: float = 2.0,
+    zone_height: float = 4,
     x_limit: float = 7.0
 ) -> float:
     """
@@ -668,34 +689,11 @@ def head_to_opponent(
     player: Player = env.objects["player"]
     opponent: Player = env.objects["opponent"]
 
-    # Apply penalty if the player is in the danger zone
     multiplier_x = -1 if player.body.position.x > opponent.body.position.x else 1
     multiplier_y = -1 if player.body.position.y > opponent.body.position.y else 1
     reward = multiplier_x * (player.body.position.x - player.prev_x) + multiplier_y * (player.body.position.y - player.prev_y)
-    return reward
-
-def edge_guard_reward(
-    env: WarehouseBrawl,
-    success_value: float = 0, #TODO
-    fail_value: float = 0,    #TODO
-) -> float:
-
-    """
-    Computes the reward given for every time step your agent is edge guarding the opponent.
-    """
-    reward = 0.0
-    G1_leftedge_x = -7
-    G1_rightedge_x = -2
-    G2_leftedge_x = 2
-    G2_rightedge_x = 7
-    player: Player = env.objects["player"]
-    opponent: Player = env.objects["opponent"]
-    if (opponent.body.position.x < G1_leftedge_x and G1_leftedge_x < player.body.position.x <  G1_leftedge_x + 1) or \
-       (opponent.body.position.x > G2_rightedge_x and G2_rightedge_x - 1 < player.body.position.x < G2_rightedge_x) or \
-        (G1_rightedge_x < opponent.body.position.x < G2_leftedge_x and \
-        (G1_rightedge_x - 1 < player.body.position.x < G1_rightedge_x) or (G2_leftedge_x < player.body.position.x < G2_leftedge_x + 1)):
-        reward = 1.0
-
+    print("Key: ", player.cur_action)
+    print("State:", player.state)
     return reward
 
 def holding_more_than_3_keys(
@@ -710,6 +708,27 @@ def holding_more_than_3_keys(
     if (a > 0.5).sum() > 3:
         return env.dt
     return 0
+
+def attack_when_opp_closeby(
+    env: WarehouseBrawl,) -> float:
+    reward = 0.0
+    player: Player = env.objects["player"]
+    opponent: Player = env.objects["opponent"]
+    dist_from_opp = abs((player.body.position.x - opponent.body.position.x)**2 + (player.body.position.y - opponent.body.position.y)**2)
+    is_attacking = isinstance(player.state, AttackState)
+    if is_attacking and dist_from_opp < 4.0:
+        reward = 1.0
+    elif is_attacking and dist_from_opp >= 4.0:
+        reward = -1.0
+    return reward
+
+def stun_opp(
+    env: WarehouseBrawl,) -> float:
+    reward = 0.0
+    opponent: Player = env.objects["opponent"]
+    if isinstance(opponent.state, StunState):
+        reward = 1.0
+    return reward
 
 def on_win_reward(env: WarehouseBrawl, agent: str) -> float:
     if agent == 'player':
@@ -749,13 +768,15 @@ Add your dictionary of RewardFunctions here using RewTerms
 def gen_reward_manager():
     reward_functions = {
         #'target_height_reward': RewTerm(func=base_height_l2, weight=0.0, params={'target_height': -4, 'obj_name': 'player'}),
-        'danger_zone_reward': RewTerm(func=danger_zone_reward, weight=1.0),
-        'damage_interaction_reward': RewTerm(func=damage_interaction_reward, weight=6.0),
+        'danger_zone_reward': RewTerm(func=danger_zone_reward, weight=10.0),
+        'damage_interaction_reward': RewTerm(func=damage_interaction_reward, weight=10.0),
         #'head_to_middle_reward': RewTerm(func=head_to_middle_reward, weight=0.01),
-        'head_to_opponent': RewTerm(func=head_to_opponent, weight=1.5),
+        'head_to_opponent': RewTerm(func=head_to_opponent, weight=5),
         #'penalize_attack_reward': RewTerm(func=in_state_reward, weight=0.5, params={'desired_state': AttackState}),
-        'holding_more_than_3_keys': RewTerm(func=holding_more_than_3_keys, weight=0.05),
+        #'holding_more_than_3_keys': RewTerm(func=holding_more_than_3_keys, weight=0.05),
         #'taunt_reward': RewTerm(func=in_state_reward, weight=0.2, params={'desired_state': TauntState}),
+        'attack_when_opp_closeby': RewTerm(func=attack_when_opp_closeby, weight=10.0),
+        'stun_opp': RewTerm(func=stun_opp, weight=5.0),
     }
     signal_subscriptions = {
         'on_win_reward': ('win_signal', RewTerm(func=on_win_reward, weight=50)),
@@ -794,7 +815,7 @@ The main function runs training. You can change configurations such as the Agent
 if __name__ == '__main__':
     checkpoints_dir = 'checkpoints/experiment_11'
 
-    for i in range(30):
+    for i in range(1):
         latest_ckpt = get_latest_checkpoint(checkpoints_dir)
 
         if latest_ckpt is None:
@@ -809,7 +830,7 @@ if __name__ == '__main__':
         # my_agent = RecurrentPPOAgent()
 
         # Start here if you want to train from a specific timestep. e.g:
-        my_agent = RecurrentPPOAgent(file_path=latest_ckpt)
+        my_agent = RecurrentPPOAgent()
 
         # Reward manager
         reward_manager = gen_reward_manager()
@@ -825,8 +846,8 @@ if __name__ == '__main__':
             save_freq=100_000, # Save frequency
             max_saved=100, # Maximum number of saved models
             save_path='checkpoints', # Save path
-            run_name='experiment_11',
-            mode=SaveHandlerMode.RESUME # Save mode, FORCE or RESUME
+            run_name='experiment_12',
+            mode=SaveHandlerMode.FORCE # Save mode, FORCE or RESUME
         )
 
         # Set opponent settings here:
@@ -842,7 +863,7 @@ if __name__ == '__main__':
             save_handler,
             opponent_cfg,
             CameraResolution.LOW,
-            train_timesteps=50,
+            train_timesteps=500000,
             train_logging=TrainLogging.PLOT
         )
 
