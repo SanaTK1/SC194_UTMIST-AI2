@@ -33,3 +33,5 @@ env/
 ai2/
 # Local scratch
 path/
+
+/user/draft_agents.py
